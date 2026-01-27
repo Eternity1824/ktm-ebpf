@@ -16,8 +16,18 @@ jobs:
       - name: Install build deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang llvm libbpf-dev
+          sudo apt-get install -y clang llvm llvm-strip libbpf-dev linux-tools-common linux-tools-generic
       - name: Generate eBPF bindings
         run: make ebpf-bindings
       - name: Verify generated artifacts
         run: git diff --exit-code
+      - name: Lint
+        run: make lint
+      - name: eBPF preflight
+        run: |
+          test -r /sys/kernel/btf/vmlinux
+          grep -q "cgroup2" /proc/mounts
+          bpftool version >/dev/null
+      - name: Run eBPF tests
+        run: |
+          sudo -E make test-ebpf
