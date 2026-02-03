@@ -23,11 +23,27 @@ jobs:
         run: git diff --exit-code
       - name: Lint
         run: make lint
+  ebpf-test:
+    runs-on: ubuntu-24.04
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Install build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang llvm libbpf-dev linux-tools-common linux-tools-generic
       - name: eBPF preflight
         run: |
           test -r /sys/kernel/btf/vmlinux
           grep -q "cgroup2" /proc/mounts
           bpftool version >/dev/null
+      - name: Run eBPF smoke tests
+        run: |
+          sudo -E go test -tags=ebpf -run 'TestVerifierLoad|TestTracepointAttach' ./iomonitor/ebpf/...
       - name: Run eBPF tests
         run: |
           sudo -E make test-ebpf
