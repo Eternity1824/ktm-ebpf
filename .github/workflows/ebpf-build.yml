@@ -47,3 +47,57 @@ jobs:
       - name: Run eBPF tests
         run: |
           sudo -E make test-ebpf
+  kind-smoke:
+    runs-on: ubuntu-24.04
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Install kind and kubectl
+        run: |
+          curl -Lo /usr/local/bin/kind https://kind.sigs.k8s.io/dl/v0.24.0/kind-linux-amd64
+          chmod +x /usr/local/bin/kind
+          curl -Lo /usr/local/bin/kubectl https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl
+          chmod +x /usr/local/bin/kubectl
+      - name: Create kind cluster
+        run: |
+          kind create cluster --name ktm-ebpf --wait 120s
+      - name: Launch smoke pod
+        run: |
+          cat <<'EOF' | kubectl apply -f -
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: ebpf-smoke
+          spec:
+            hostPID: true
+            restartPolicy: Never
+            containers:
+            - name: ebpf
+              image: golang:1.25
+              securityContext:
+                privileged: true
+              command: ["bash", "-lc", "sleep infinity"]
+              volumeMounts:
+              - name: sys-kernel-btf
+                mountPath: /sys/kernel/btf
+                readOnly: true
+            volumes:
+            - name: sys-kernel-btf
+              hostPath:
+                path: /sys/kernel/btf
+          EOF
+          kubectl wait --for=condition=Ready pod/ebpf-smoke --timeout=120s
+      - name: Copy repo into pod
+        run: |
+          kubectl cp . ebpf-smoke:/src
+      - name: Run eBPF smoke tests in pod
+        run: |
+          kubectl exec ebpf-smoke -- bash -lc "cd /src && go test -tags=ebpf -run 'TestVerifierLoad|TestTracepointAttach' ./iomonitor/ebpf/..."
+      - name: Cleanup kind cluster
+        if: always()
+        run: |
+          kind delete cluster --name ktm-ebpf
