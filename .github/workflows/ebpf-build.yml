@@ -58,10 +58,13 @@ jobs:
           cache: true
       - name: Install kind and kubectl
         run: |
-          curl -Lo /usr/local/bin/kind https://kind.sigs.k8s.io/dl/v0.24.0/kind-linux-amd64
-          chmod +x /usr/local/bin/kind
-          curl -Lo /usr/local/bin/kubectl https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl
-          chmod +x /usr/local/bin/kubectl
+          BIN_DIR="${RUNNER_TEMP}/bin"
+          mkdir -p "$BIN_DIR"
+          curl -Lo "$BIN_DIR/kind" https://kind.sigs.k8s.io/dl/v0.24.0/kind-linux-amd64
+          chmod +x "$BIN_DIR/kind"
+          curl -Lo "$BIN_DIR/kubectl" https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl
+          chmod +x "$BIN_DIR/kubectl"
+          echo "$BIN_DIR" >> "$GITHUB_PATH"
       - name: Create kind cluster
         run: |
           kind create cluster --name ktm-ebpf --wait 120s
