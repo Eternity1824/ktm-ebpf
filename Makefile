@@ -92,6 +92,9 @@ ebpf-bindings:
 			-type cache_stats_t \
 			-type read_latency_stats_t \
 			Iomonitor ../programs/iomonitor.c -- -I.)
+	@mv -f iomonitor/ebpf/generated/iomonitor_x86_bpfel.go iomonitor/ebpf/generated/iomonitor_amd64_bpfel.go
+	@mv -f iomonitor/ebpf/generated/iomonitor_x86_bpfel.o iomonitor/ebpf/generated/iomonitor_amd64_bpfel.o
+	@sed -i 's/iomonitor_x86_bpfel.o/iomonitor_amd64_bpfel.o/' iomonitor/ebpf/generated/iomonitor_amd64_bpfel.go
 	@echo "Building for arm64..."
 	@(cd iomonitor/ebpf/generated && \
 		$(GO) run github.com/cilium/ebpf/cmd/bpf2go \

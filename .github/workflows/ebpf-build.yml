@@ -102,7 +102,7 @@ jobs:
           kubectl cp . ebpf-smoke:/src
       - name: Run eBPF smoke tests in pod
         run: |
-          kubectl exec ebpf-smoke -- bash -lc "mkdir -p /sys/kernel/tracing /sys/kernel/debug && (mount -t tracefs tracefs /sys/kernel/tracing 2>/dev/null || mount -t debugfs debugfs /sys/kernel/debug) && cd /src && /usr/local/go/bin/go test -tags=ebpf -run 'TestVerifierLoad|TestTracepointAttach' ./iomonitor/ebpf/..."
+          kubectl exec ebpf-smoke -- bash -lc "mkdir -p /sys/kernel/tracing /sys/kernel/debug && (mount -t tracefs tracefs /sys/kernel/tracing 2>/dev/null || mount -t debugfs debugfs /sys/kernel/debug) && mount | grep -E 'tracefs|debugfs' || true && cd /src && /usr/local/go/bin/go test -tags=ebpf -run 'TestVerifierLoad|TestTracepointAttach' ./iomonitor/ebpf/..."
       - name: Cleanup kind cluster
         if: always()
         run: |

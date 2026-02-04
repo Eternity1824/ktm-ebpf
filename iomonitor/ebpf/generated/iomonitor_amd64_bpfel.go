@@ -249,5 +249,5 @@ func _IomonitorClose(closers ...io.Closer) error {
 
 // Do not access this directly.
 //
-//go:embed iomonitor_x86_bpfel.o
+//go:embed iomonitor_amd64_bpfel.o
 var _IomonitorBytes []byte
