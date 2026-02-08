@@ -1,0 +1,109 @@
+name: ebpf
+
+on:
+  pull_request:
+  push:
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Install build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang llvm libbpf-dev linux-tools-common linux-tools-generic
+      - name: Generate eBPF bindings
+        run: make ebpf-bindings
+      - name: Verify generated artifacts
+        run: git diff --exit-code
+      - name: Lint
+        run: make lint
+  ebpf-test:
+    runs-on: ubuntu-24.04
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Install build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang llvm libbpf-dev linux-tools-common linux-tools-generic
+      - name: eBPF preflight
+        run: |
+          test -r /sys/kernel/btf/vmlinux
+          grep -q "cgroup2" /proc/mounts
+          bpftool version >/dev/null
+      - name: Run eBPF smoke tests
+        run: |
+          sudo -E go test -tags=ebpf -run 'TestVerifierLoad|TestTracepointAttach' ./iomonitor/ebpf/...
+      - name: Run eBPF tests
+        run: |
+          sudo -E make test-ebpf
+  kind-smoke:
+    runs-on: ubuntu-24.04
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Install kind and kubectl
+        run: |
+          BIN_DIR="${RUNNER_TEMP}/bin"
+          mkdir -p "$BIN_DIR"
+          curl -Lo "$BIN_DIR/kind" https://kind.sigs.k8s.io/dl/v0.24.0/kind-linux-amd64
+          chmod +x "$BIN_DIR/kind"
+          curl -Lo "$BIN_DIR/kubectl" https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl
+          chmod +x "$BIN_DIR/kubectl"
+          echo "$BIN_DIR" >> "$GITHUB_PATH"
+      - name: Create kind cluster
+        run: |
+          kind create cluster --name ktm-ebpf --wait 120s
+      - name: Launch smoke pod
+        run: |
+          cat <<'EOF' | kubectl apply -f -
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: ebpf-smoke
+          spec:
+            hostPID: true
+            restartPolicy: Never
+            containers:
+            - name: ebpf
+              image: golang:1.25
+              securityContext:
+                privileged: true
+              env:
+              - name: PATH
+                value: /usr/local/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+              command: ["bash", "-lc", "sleep infinity"]
+              volumeMounts:
+              - name: sys-kernel-btf
+                mountPath: /sys/kernel/btf
+                readOnly: true
+            volumes:
+            - name: sys-kernel-btf
+              hostPath:
+                path: /sys/kernel/btf
+          EOF
+          kubectl wait --for=condition=Ready pod/ebpf-smoke --timeout=120s
+      - name: Copy repo into pod
+        run: |
+          kubectl cp . ebpf-smoke:/src
+      - name: Run eBPF smoke tests in pod
+        run: |
+          kubectl exec ebpf-smoke -- bash -lc "mkdir -p /sys/kernel/tracing /sys/kernel/debug && (mount -t tracefs tracefs /sys/kernel/tracing 2>/dev/null || mount -t debugfs debugfs /sys/kernel/debug) && mount | grep -E 'tracefs|debugfs' || true && cd /src && /usr/local/go/bin/go test -tags=ebpf -run 'TestVerifierLoad|TestTracepointAttach' ./iomonitor/ebpf/..."
+      - name: Cleanup kind cluster
+        if: always()
+        run: |
+          kind delete cluster --name ktm-ebpf
