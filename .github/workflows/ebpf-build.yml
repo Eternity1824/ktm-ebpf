@@ -39,12 +39,26 @@ jobs:
           sudo apt-get install -y "linux-tools-$(uname -r)" "linux-cloud-tools-$(uname -r)" \
             || sudo apt-get install -y linux-tools-azure linux-cloud-tools-azure \
             || sudo apt-get install -y linux-tools-generic
-          command -v bpftool && bpftool version
+          if [ -x "/usr/lib/linux-tools-$(uname -r)/bpftool" ]; then
+            BPFTOOL_BIN="/usr/lib/linux-tools-$(uname -r)/bpftool"
+          elif [ -x "/usr/lib/linux-tools/$(uname -r)/bpftool" ]; then
+            BPFTOOL_BIN="/usr/lib/linux-tools/$(uname -r)/bpftool"
+          else
+            BPFTOOL_BIN="$(find /usr/lib -type f -path '*/linux-tools*/bpftool' 2>/dev/null | head -n1)"
+          fi
+
+          if [ -z "$BPFTOOL_BIN" ] || [ ! -x "$BPFTOOL_BIN" ]; then
+            echo "bpftool binary not found after install" >&2
+            exit 1
+          fi
+
+          echo "BPFTOOL=$BPFTOOL_BIN" >> "$GITHUB_ENV"
+          "$BPFTOOL_BIN" version
       - name: eBPF preflight
         run: |
           test -r /sys/kernel/btf/vmlinux
           grep -q "cgroup2" /proc/mounts
-          bpftool version >/dev/null
+          "$BPFTOOL" version >/dev/null
       - name: Run eBPF smoke tests
         run: |
           sudo -E go test -tags=ebpf -run 'TestVerifierLoad|TestTracepointAttach' ./iomonitor/ebpf/...
