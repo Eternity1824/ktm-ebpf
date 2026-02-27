@@ -35,44 +35,9 @@ jobs:
       - name: Install build deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang llvm libbpf-dev linux-tools-common
-          sudo apt-get install -y "linux-tools-$(uname -r)" "linux-cloud-tools-$(uname -r)" \
-            || sudo apt-get install -y linux-tools-azure linux-cloud-tools-azure \
-            || sudo apt-get install -y linux-tools-generic
-
-          # Try to find bpftool from installed linux-tools packages
-          BPFTOOL_BIN=""
-          for candidate in \
-            "/usr/lib/linux-tools-$(uname -r)/bpftool" \
-            "/usr/lib/linux-tools/$(uname -r)/bpftool" \
-            "$(find /usr/lib/linux-tools* -name bpftool -type f 2>/dev/null | head -n1)"; do
-            if [ -n "$candidate" ] && [ -x "$candidate" ]; then
-              BPFTOOL_BIN="$candidate"
-              break
-            fi
-          done
-
-          # Fallback: search all dpkg-installed files
-          if [ -z "$BPFTOOL_BIN" ]; then
-            BPFTOOL_BIN="$(dpkg -S '*/bpftool' 2>/dev/null | grep -oP ':\s*\K/\S+bpftool$' | head -n1)"
-            [ -n "$BPFTOOL_BIN" ] && [ ! -x "$BPFTOOL_BIN" ] && BPFTOOL_BIN=""
-          fi
-
-          # Last resort: install standalone bpftool package
-          if [ -z "$BPFTOOL_BIN" ]; then
-            sudo apt-get install -y bpftool
-            BPFTOOL_BIN="$(command -v bpftool 2>/dev/null || find /usr/sbin /usr/bin /usr/lib -name bpftool -type f 2>/dev/null | head -n1)"
-          fi
-
-          if [ -z "$BPFTOOL_BIN" ] || [ ! -x "$BPFTOOL_BIN" ]; then
-            echo "bpftool binary not found after install" >&2
-            find /usr/lib/linux-tools* -type f -name bpftool 2>/dev/null || echo "No bpftool found under /usr/lib/linux-tools*"
-            exit 1
-          fi
-
-          # Always symlink to /usr/local/bin to override any distro wrapper
-          sudo ln -sf "$BPFTOOL_BIN" /usr/local/bin/bpftool
-
+          sudo apt-get install -y --no-install-recommends \
+            bpftool clang llvm libbpf-dev libelf-dev
+          BPFTOOL_BIN="$(command -v bpftool)"
           echo "BPFTOOL=$BPFTOOL_BIN" >> "$GITHUB_ENV"
           "$BPFTOOL_BIN" version
       - name: eBPF preflight
